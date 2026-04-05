@@ -20,8 +20,46 @@ function App() {
   const [page, setPage] = useState('home')
   const [selectedCountry, setSelectedCountry] = useState('all')
   const [selectedType, setSelectedType] = useState('all')
-  const [selectedContentId, setSelectedContentId] = useState(archiveContents[0].id)
   const [selectedCountryPage, setSelectedCountryPage] = useState('mx')
+
+  const [archiveContents, setArchiveContents] = useState([])
+  const [selectedContentId, setSelectedContentId] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    const fetchArchiveContents = async () => {
+      setIsLoading(true)
+      setLoadError('')
+
+      try {
+        const snapshot = await getDocs(collection(db, 'archiveContents'))
+        const items = snapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }))
+          .filter((item) => item.isPublished)
+
+        if (items.length > 0) {
+          setArchiveContents(items)
+          setSelectedContentId(items[0].id)
+        } else {
+          setArchiveContents(archiveContentsFallback)
+          setSelectedContentId(archiveContentsFallback[0]?.id ?? null)
+        }
+      } catch (error) {
+        console.error('Firestore 조회 실패:', error)
+        setLoadError('아카이브 데이터를 불러오지 못했습니다. fallback 데이터를 표시합니다.')
+        setArchiveContents(archiveContentsFallback)
+        setSelectedContentId(archiveContentsFallback[0]?.id ?? null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchArchiveContents()
+  }, [])
 
   const selectedContent = archiveContents.find((item) => item.id === selectedContentId)
 
@@ -31,11 +69,11 @@ function App() {
       const typeMatched = selectedType === 'all' || item.type === selectedType
       return countryMatched && typeMatched
     })
-  }, [selectedCountry, selectedType])
+  }, [archiveContents, selectedCountry, selectedType])
 
   const countryOnlyContents = useMemo(() => {
     return archiveContents.filter((item) => item.country === selectedCountryPage)
-  }, [selectedCountryPage])
+  }, [archiveContents, selectedCountryPage])
 
   const goToDetail = (contentId) => {
     setSelectedContentId(contentId)
@@ -50,7 +88,17 @@ function App() {
   return (
     <div className="app-shell">
       <header className="site-header">
-        <div className="brand" onClick={() => setPage('home')}>
+        <div
+          className="brand"
+          onClick={() => setPage('home')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setPage('home')
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
           <span className="brand-badge">KOIPA</span>
           <div>
             <strong>KOIPA Mexico Archive</strong>
@@ -77,44 +125,63 @@ function App() {
       </header>
 
       <main className="page-container">
-        {page === 'home' && (
-          <HomePage
-            onMoveArchive={() => setPage('archive')}
-            onMoveCountry={goToCountry}
-            onMoveAbout={() => setPage('about')}
-          />
+        {loadError && (
+          <div className="page-content">
+            <div className="empty-box">
+              <strong>{loadError}</strong>
+            </div>
+          </div>
         )}
 
-        {page === 'archive' && (
-          <ArchivePage
-            selectedCountry={selectedCountry}
-            selectedType={selectedType}
-            setSelectedCountry={setSelectedCountry}
-            setSelectedType={setSelectedType}
-            filteredArchive={filteredArchive}
-            onViewDetail={goToDetail}
-          />
-        )}
+        {isLoading ? (
+          <div className="page-content">
+            <div className="empty-box">
+              <strong>데이터를 불러오는 중입니다.</strong>
+              <p>잠시만 기다려 주세요.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {page === 'home' && (
+              <HomePage
+                onMoveArchive={() => setPage('archive')}
+                onMoveCountry={goToCountry}
+                onMoveAbout={() => setPage('about')}
+              />
+            )}
 
-        {page === 'country' && (
-          <CountryPage
-            selectedCountryPage={selectedCountryPage}
-            setSelectedCountryPage={setSelectedCountryPage}
-            countryOnlyContents={countryOnlyContents}
-            onViewDetail={goToDetail}
-          />
-        )}
+            {page === 'archive' && (
+              <ArchivePage
+                selectedCountry={selectedCountry}
+                selectedType={selectedType}
+                setSelectedCountry={setSelectedCountry}
+                setSelectedType={setSelectedType}
+                filteredArchive={filteredArchive}
+                onViewDetail={goToDetail}
+              />
+            )}
 
-        {page === 'detail' && selectedContent && (
-          <DetailPage content={selectedContent} />
-        )}
+            {page === 'country' && (
+              <CountryPage
+                selectedCountryPage={selectedCountryPage}
+                setSelectedCountryPage={setSelectedCountryPage}
+                countryOnlyContents={countryOnlyContents}
+                onViewDetail={goToDetail}
+              />
+            )}
 
-        {page === 'about' && <AboutPage />}
+            {page === 'detail' && selectedContent && (
+              <DetailPage content={selectedContent} />
+            )}
+
+            {page === 'about' && <AboutPage />}
+          </>
+        )}
       </main>
 
       <footer className="site-footer">
         <p>© KOIPA Mexico Archive FO</p>
-        <p>향후 Firebase Firestore 연동을 고려한 mock data 기반 구조</p>
+        <p>Firebase Firestore 연동 기반 공개 아카이브 서비스</p>
       </footer>
     </div>
   )
@@ -143,7 +210,7 @@ function HomePage({ onMoveArchive, onMoveCountry, onMoveAbout }) {
         <div className="hero-panel">
           <div className="hero-panel-card">
             <strong>운영 방향</strong>
-            <p>현재는 mock data 기반으로 동작하며, 추후 Firebase Firestore 연동 예정입니다.</p>
+            <p>현재는 Firestore 기반으로 공개 문서를 조회하며, BO와 연동 가능한 구조입니다.</p>
           </div>
           <div className="hero-panel-card">
             <strong>서비스 특성</strong>
@@ -179,7 +246,7 @@ function HomePage({ onMoveArchive, onMoveCountry, onMoveAbout }) {
           {contentTypes.map((type) => (
             <article className="info-card compact" key={type.id}>
               <h3>{type.label}</h3>
-              <p>향후 Firestore 컬렉션 구조와 연결하기 쉬운 형태로 관리됩니다.</p>
+              <p>Firestore 문서 필드 구조와 연계 가능한 형태로 관리됩니다.</p>
             </article>
           ))}
         </div>
@@ -292,14 +359,14 @@ function DetailPage({ content }) {
           <h1 className="detail-title">{content.title}</h1>
 
           <div className="meta-inline">
-            <span>{countryMap[content.country]}</span>
-            <span>{typeMap[content.type]}</span>
+            <span>{countryMap[content.country] || content.country}</span>
+            <span>{typeMap[content.type] || content.type}</span>
             <span>{content.publishMonth}</span>
             <span>{content.postedDate}</span>
           </div>
 
           <div className="detail-body">
-            {content.body.split('\n').map((paragraph, index) => (
+            {(content.body || '').split('\n').map((paragraph, index) => (
               <p key={`${content.id}-${index}`}>{paragraph}</p>
             ))}
           </div>
@@ -311,11 +378,11 @@ function DetailPage({ content }) {
             <dl>
               <div>
                 <dt>국가</dt>
-                <dd>{countryMap[content.country]}</dd>
+                <dd>{countryMap[content.country] || content.country}</dd>
               </div>
               <div>
                 <dt>유형</dt>
-                <dd>{typeMap[content.type]}</dd>
+                <dd>{typeMap[content.type] || content.type}</dd>
               </div>
               <div>
                 <dt>발행월</dt>
@@ -350,22 +417,16 @@ function AboutPage() {
 
         <h2>운영 구조</h2>
         <p>
-          FO는 외부 공개 화면, BO는 관리자 운영 화면, Firebase는 향후 문서 데이터 저장 및
-          조회를 담당하는 백엔드로 연결될 예정입니다.
+          FO는 외부 공개 화면, BO는 관리자 운영 화면, Firebase는 문서 데이터 저장 및
+          조회를 담당하는 백엔드로 연결됩니다.
         </p>
 
         <h2>FO / BO / Firebase 방향</h2>
         <ul>
           <li>FO: 공개 문서 탐색, 목록 조회, 상세 열람 중심</li>
           <li>BO: 문서 등록, 수정, 분류, 공개 여부 관리 중심</li>
-          <li>Firebase: Firestore 기반 데이터 저장 및 조회 연동 예정</li>
+          <li>Firebase: Firestore 기반 데이터 저장 및 조회</li>
         </ul>
-
-        <h2>현재 단계</h2>
-        <p>
-          현재 버전은 mock data 기반으로 구현되어 있어, UI/데이터 구조 검증과 GitHub Pages
-          배포에 적합한 형태입니다.
-        </p>
       </section>
     </div>
   )
@@ -375,8 +436,8 @@ function ArchiveCard({ item, onViewDetail }) {
   return (
     <article className="archive-card">
       <div className="archive-meta">
-        <span className="badge">{countryMap[item.country]}</span>
-        <span className="badge subtle">{typeMap[item.type]}</span>
+        <span className="badge">{countryMap[item.country] || item.country}</span>
+        <span className="badge subtle">{typeMap[item.type] || item.type}</span>
       </div>
       <h3>{item.title}</h3>
       <p className="archive-summary">{item.summary}</p>
