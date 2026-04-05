@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { collection, getDocs } from 'firebase/firestore'
+import { db } from './firebase'
 import {
-  archiveContents,
+  archiveContentsFallback,
   contentTypes,
   countries,
   countryMap,
